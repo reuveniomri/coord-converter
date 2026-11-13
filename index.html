@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ממיר נקודות ציון</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--text:#16181d;--sub:#5b6270;--border:#dfe2e8;--accent:#1d6ef2}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1115;--card:#181b21;--text:#eef0f4;--sub:#9aa1ad;--border:#2a2e36;--accent:#4c8dff}}
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Arial,sans-serif;background:var(--bg);color:var(--text)}
+main{max-width:640px;margin:0 auto;padding:20px 16px 40px}
+h1{font-size:24px;margin:8px 0 4px}
+p.sub{color:var(--sub);margin:0 0 18px}
+textarea{width:100%;min-height:72px;font-size:16px;padding:12px;border-radius:12px;border:1px solid var(--border);background:var(--card);color:var(--text);direction:ltr;text-align:left;resize:vertical}
+.row{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0}
+button{font-size:15px;padding:10px 16px;border-radius:10px;border:1px solid var(--border);background:var(--card);color:var(--text);cursor:pointer}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.status{color:var(--sub);font-size:14px;min-height:20px}
+.status.err{color:#d33}
+.card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px;margin-top:12px}
+.card h2{font-size:15px;margin:0 0 8px;color:var(--sub);font-weight:600}
+.val{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:16px;direction:ltr;text-align:left;word-break:break-all;margin-bottom:10px}
+.acts{display:flex;flex-wrap:wrap;gap:8px}
+.foot{color:var(--sub);font-size:13px;margin-top:24px;line-height:1.6}
+</style>
+</head>
+<body>
+<main>
+<h1>ממיר נקודות ציון</h1>
+<p class="sub">מדביקים נקודה מגוגל, Waze או Off Road ומעתיקים אותה לכל אפליקציה.</p>
+<textarea id="in" placeholder="31.1512713, 35.2306441 או קישור Waze / גוגל מפות או 562212,221956"></textarea>
+<div class="row">
+<button class="primary" id="paste">הדבק מהלוח</button>
+<button id="clear">נקה</button>
+</div>
+<div class="status" id="st"></div>
+<div id="out"></div>
+<div class="foot">אפשר להדביק: מספרים עשרוניים מגוגל, כל קישור של Waze (גם קישור שיתוף מקוצר), קישור גוגל מפות, מעלות ודקות עם °, או רשת ישראל (ITM) בפורמט צפון,מזרח. הכול מחושב בטלפון, בלי אינטרנט. דיוק של כמטר.</div>
+</main>
+<script>
+const D=Math.PI/180,WA=6378137,WF=1/298.257223563,GA=6378137,GF=1/298.257222101;
+const H=[-24.0024,-17.1032,-17.8444,-0.33077,-1.85269,1.66969,5.4248];
+const L0=31.7343936111111*D,M0=35.2045169444444*D,K0=1.0000067,FE=219529.584,FN=626907.39;
+function geo2ecef(lat,lon,a,f){const e2=f*(2-f),s=Math.sin(lat*D),c=Math.cos(lat*D),N=a/Math.sqrt(1-e2*s*s);return[N*c*Math.cos(lon*D),N*c*Math.sin(lon*D),N*(1-e2)*s]}
+function ecef2geo(v,a,f){const[x,y,z]=v,e2=f*(2-f),p=Math.hypot(x,y);let lat=Math.atan2(z,p*(1-e2));for(let i=0;i<10;i++){const s=Math.sin(lat),N=a/Math.sqrt(1-e2*s*s);lat=Math.atan2(z+e2*N*s,p)}return[lat/D,Math.atan2(y,x)/D]}
+function helm(v,sg){const[tx,ty,tz,rx,ry,rz,s]=H.map(q=>q*sg),r=q=>q/3600*D,R=[r(rx),r(ry),r(rz)],k=1+s*1e-6,[x,y,z]=v;return[tx+k*(x-R[2]*y+R[1]*z),ty+k*(R[2]*x+y-R[0]*z),tz+k*(-R[1]*x+R[0]*y+z)]}
+function mArc(p,a,e2){const e4=e2*e2,e6=e4*e2;return a*((1-e2/4-3*e4/64-5*e6/256)*p-(3*e2/8+3*e4/32+45*e6/1024)*Math.sin(2*p)+(15*e4/256+45*e6/1024)*Math.sin(4*p)-(35*e6/3072)*Math.sin(6*p))}
+function tm(lat,lon){const a=GA,e2=GF*(2-GF),ep=e2/(1-e2),p=lat*D,l=lon*D,N=a/Math.sqrt(1-e2*Math.sin(p)**2),T=Math.tan(p)**2,C=ep*Math.cos(p)**2,A=(l-M0)*Math.cos(p),M=mArc(p,a,e2),Mo=mArc(L0,a,e2);
+return[FE+K0*N*(A+(1-T+C)*A**3/6+(5-18*T+T*T+72*C-58*ep)*A**5/120),FN+K0*(M-Mo+N*Math.tan(p)*(A*A/2+(5-T+9*C+4*C*C)*A**4/24+(61-58*T+T*T+600*C-330*ep)*A**6/720))]}
+function itmInv(E,Nn){const a=GA,e2=GF*(2-GF),ep=e2/(1-e2),M=mArc(L0,a,e2)+(Nn-FN)/K0,mu=M/(a*(1-e2/4-3*e2*e2/64-5*e2**3/256)),e1=(1-Math.sqrt(1-e2))/(1+Math.sqrt(1-e2));
+const p1=mu+(3*e1/2-27*e1**3/32)*Math.sin(2*mu)+(21*e1*e1/16-55*e1**4/32)*Math.sin(4*mu)+(151*e1**3/96)*Math.sin(6*mu)+(1097*e1**4/512)*Math.sin(8*mu);
+const C1=ep*Math.cos(p1)**2,T1=Math.tan(p1)**2,N1=a/Math.sqrt(1-e2*Math.sin(p1)**2),R1=a*(1-e2)/Math.pow(1-e2*Math.sin(p1)**2,1.5),d=(E-FE)/(N1*K0);
+const lat=p1-(N1*Math.tan(p1)/R1)*(d*d/2-(5+3*T1+10*C1-4*C1*C1-9*ep)*d**4/24+(61+90*T1+298*C1+45*T1*T1-252*ep-3*C1*C1)*d**6/720);
+const lon=M0+(d-(1+2*T1+C1)*d**3/6+(5-2*C1+28*T1-3*C1*C1+8*ep+24*T1*T1)*d**5/120)/Math.cos(p1);return[lat/D,lon/D]}
+const wgs2itm=(la,lo)=>{const g=ecef2geo(helm(geo2ecef(la,lo,WA,WF),-1),GA,GF);return tm(g[0],g[1])};
+const itm2wgs=(E,N)=>{const g=itmInv(E,N);return ecef2geo(helm(geo2ecef(g[0],g[1],GA,GF),1),WA,WF)};
+function geohash(h){const B="0123456789bcdefghjkmnpqrstuvwxyz";let la=[-90,90],lo=[-180,180],ev=true;for(const ch of h){const v=B.indexOf(ch);if(v<0)return null;for(let i=4;i>=0;i--){const b=(v>>i)&1,r=ev?lo:la,m=(r[0]+r[1])/2;if(b)r[0]=m;else r[1]=m;ev=!ev}}return[(la[0]+la[1])/2,(lo[0]+lo[1])/2]}
+function dms(s){const re=/(\d+(?:\.\d+)?)\s*°\s*(?:(\d+(?:\.\d+)?)\s*['′])?\s*(?:(\d+(?:\.\d+)?)\s*["″])?\s*([NSEW])?/gi;const v=[];let m;while((m=re.exec(s))){let x=+m[1]+(m[2]?m[2]/60:0)+(m[3]?m[3]/3600:0);if(m[4]&&/[SW]/i.test(m[4]))x=-x;v.push(x)}return v.length>=2?v:null}
+function parse(s){s=s.trim();if(!s)return null;
+if(s.includes("°")){const d=dms(s);if(d)return{lat:d[0],lon:d[1],src:"מעלות ודקות"}}
+const gh=s.match(/waze\.com\/ul\/h([0-9bcdefghjkmnpqrstuvwxyz]+)/i);if(gh){const g=geohash(gh[1].toLowerCase());if(g)return{lat:g[0],lon:g[1],src:"קישור שיתוף של Waze"}}
+let t=s;const ll=s.match(/ll=(-?\d+\.?\d*)(?:%2C|,)(-?\d+\.?\d*)/i),at=s.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/),q=s.match(/[?&](?:q|query|destination)=(-?\d+\.\d+)(?:%2C|,)\s*(-?\d+\.\d+)/i);
+if(ll)t=ll[1]+","+ll[2];else if(q)t=q[1]+","+q[2];else if(at)t=at[1]+","+at[2];
+const n=(t.match(/-?\d+(?:\.\d+)?/g)||[]).map(Number);if(n.length<2)return null;const[a,b]=n;
+if(Math.abs(a)<=90&&Math.abs(b)<=180){if(a>33.5&&a<36.5&&b>29&&b<33.5)return{lat:b,lon:a,src:"GPS (הסדר הוחלף)"};return{lat:a,lon:b,src:ll?"קישור Waze":(at||q)?"קישור גוגל מפות":"GPS עשרוני"}}
+if(a>1000&&b>1000){const N=Math.max(a,b),E=Math.min(a,b),w=itm2wgs(E,N);return{lat:w[0],lon:w[1],src:"רשת ישראל (ITM)"}}return null}
+const $=id=>document.getElementById(id);
+function card(title,val,link){const c=document.createElement("div");c.className="card";c.innerHTML=`<h2>${title}</h2><div class="val"></div><div class="acts"></div>`;c.querySelector(".val").textContent=val;const a=c.querySelector(".acts");
+const b=document.createElement("button");b.className="primary";b.textContent="העתק";b.onclick=async()=>{try{await navigator.clipboard.writeText(val)}catch(e){const ta=document.createElement("textarea");ta.value=val;document.body.appendChild(ta);ta.select();document.execCommand("copy");ta.remove()}b.textContent="הועתק ✓";setTimeout(()=>b.textContent="העתק",1500)};a.appendChild(b);
+if(link){const o=document.createElement("button");o.textContent="פתח";o.onclick=()=>window.open(link,"_blank");a.appendChild(o)}return c}
+function run(){const s=$("in").value,p=parse(s),out=$("out"),st=$("st");out.innerHTML="";st.className="status";
+if(!s.trim()){st.textContent="";return}if(!p){st.className="status err";st.textContent="לא זוהה פורמט. נסה מספרים מגוגל, קישור Waze או רשת ישראל צפון,מזרח.";return}
+st.textContent="זוהה כ: "+p.src;const la=p.lat.toFixed(7),lo=p.lon.toFixed(7),i=wgs2itm(p.lat,p.lon);
+const waze=`https://waze.com/ul?ll=${la},${lo}&navigate=yes`,gm=`https://www.google.com/maps?q=${la},${lo}`;
+out.appendChild(card("Off Road (רשת ישראל, צפון,מזרח)",`${Math.round(i[1])},${Math.round(i[0])}`));
+out.appendChild(card("Waze (קישור ניווט)",waze,waze));
+out.appendChild(card("גוגל (קואורדינטות לחיפוש)",`${la}, ${lo}`));
+out.appendChild(card("גוגל מפות (קישור)",gm,gm));}
+$("in").addEventListener("input",run);
+$("clear").onclick=()=>{$("in").value="";run();$("in").focus()};
+$("paste").onclick=async()=>{try{$("in").value=await navigator.clipboard.readText();run()}catch(e){$("st").textContent="אין גישה ללוח, הדבק ידנית בתיבה."}};
+const qs=new URLSearchParams(location.search).get("p");if(qs){$("in").value=qs;run()}
+</script>
+</body>
+</html>
