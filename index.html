@@ -36,7 +36,7 @@ button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
 </div>
 <div class="status" id="st"></div>
 <div id="out"></div>
-<div class="foot">אפשר להדביק: מספרים עשרוניים מגוגל, כל קישור של Waze (גם קישור שיתוף מקוצר), קישור גוגל מפות, מעלות ודקות עם °, או רשת ישראל (ITM) בפורמט צפון,מזרח. הכול מחושב בטלפון, בלי אינטרנט. דיוק של כמטר.</div>
+<div class="foot">אפשר להדביק: מספרים עשרוניים מגוגל, קישור גוגל מפות מקוצר (maps.app.goo.gl), כל קישור של Waze (גם קישור שיתוף מקוצר), קישור גוגל מפות, מעלות ודקות עם °, או רשת ישראל (ITM) בפורמט צפון,מזרח. החישוב נעשה בטלפון; רק פתיחת קישור מקוצר של גוגל צריכה אינטרנט. דיוק של כמטר.</div>
 </main>
 <script>
 const D=Math.PI/180,WA=6378137,WF=1/298.257223563,GA=6378137,GF=1/298.257222101;
@@ -60,8 +60,9 @@ function dms(s){const re=/(\d+(?:\.\d+)?)\s*°\s*(?:(\d+(?:\.\d+)?)\s*['′])?\s
 function parse(s){s=s.trim();if(!s)return null;
 if(s.includes("°")){const d=dms(s);if(d)return{lat:d[0],lon:d[1],src:"מעלות ודקות"}}
 const gh=s.match(/waze\.com\/ul\/h([0-9bcdefghjkmnpqrstuvwxyz]+)/i);if(gh){const g=geohash(gh[1].toLowerCase());if(g)return{lat:g[0],lon:g[1],src:"קישור שיתוף של Waze"}}
-let t=s;const ll=s.match(/ll=(-?\d+\.?\d*)(?:%2C|,)(-?\d+\.?\d*)/i),at=s.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/),q=s.match(/[?&](?:q|query|destination)=(-?\d+\.\d+)(?:%2C|,)\s*(-?\d+\.\d+)/i);
+let t=s;const ll=s.match(/ll=(-?\d+\.?\d*)(?:%2C|,)(-?\d+\.?\d*)/i),at=s.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/),q=s.match(/[?&](?:q|query|destination|daddr|center)=(-?\d+\.\d+)(?:%2C|,)\s*(-?\d+\.\d+)/i);
 if(ll)t=ll[1]+","+ll[2];else if(q)t=q[1]+","+q[2];else if(at)t=at[1]+","+at[2];
+const d34=s.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/);if(d34&&!ll&&!q)t=d34[1]+","+d34[2];
 const n=(t.match(/-?\d+(?:\.\d+)?/g)||[]).map(Number);if(n.length<2)return null;const[a,b]=n;
 if(Math.abs(a)<=90&&Math.abs(b)<=180){if(a>33.5&&a<36.5&&b>29&&b<33.5)return{lat:b,lon:a,src:"GPS (הסדר הוחלף)"};return{lat:a,lon:b,src:ll?"קישור Waze":(at||q)?"קישור גוגל מפות":"GPS עשרוני"}}
 if(a>1000&&b>1000){const N=Math.max(a,b),E=Math.min(a,b),w=itm2wgs(E,N);return{lat:w[0],lon:w[1],src:"רשת ישראל (ITM)"}}return null}
@@ -69,9 +70,11 @@ const $=id=>document.getElementById(id);
 function card(title,val,link){const c=document.createElement("div");c.className="card";c.innerHTML=`<h2>${title}</h2><div class="val"></div><div class="acts"></div>`;c.querySelector(".val").textContent=val;const a=c.querySelector(".acts");
 const b=document.createElement("button");b.className="primary";b.textContent="העתק";b.onclick=async()=>{try{await navigator.clipboard.writeText(val)}catch(e){const ta=document.createElement("textarea");ta.value=val;document.body.appendChild(ta);ta.select();document.execCommand("copy");ta.remove()}b.textContent="הועתק ✓";setTimeout(()=>b.textContent="העתק",1500)};a.appendChild(b);
 if(link){const o=document.createElement("button");o.textContent="פתח";o.onclick=()=>window.open(link,"_blank");a.appendChild(o)}return c}
-function run(){const s=$("in").value,p=parse(s),out=$("out"),st=$("st");out.innerHTML="";st.className="status";
+const SHORT=/https?:\/\/(maps\.app\.goo\.gl|goo\.gl|g\.co)\/\S+/i;let rid=0;
+async function run(){let s=$("in").value;const sm=s.match(SHORT);if(sm){const my=++rid;$("out").innerHTML="";$("st").className="status";$("st").textContent="פותח את הקישור המקוצר...";try{const r=await fetch("/api/resolve?u="+encodeURIComponent(sm[0]));const j=await r.json();if(my!==rid)return;s=j.url||s}catch(e){if(my!==rid)return;$("st").className="status err";$("st").textContent="לא הצלחתי לפתוח את הקישור המקוצר. בדוק חיבור לאינטרנט.";return}}else rid++;render(s,!!sm)}
+function render(s,short){const p=parse(s),out=$("out"),st=$("st");out.innerHTML="";st.className="status";
 if(!s.trim()){st.textContent="";return}if(!p){st.className="status err";st.textContent="לא זוהה פורמט. נסה מספרים מגוגל, קישור Waze או רשת ישראל צפון,מזרח.";return}
-st.textContent="זוהה כ: "+p.src;const la=p.lat.toFixed(7),lo=p.lon.toFixed(7),i=wgs2itm(p.lat,p.lon);
+st.textContent="זוהה כ: "+p.src+(short?" (מקישור מקוצר)":"");const la=p.lat.toFixed(7),lo=p.lon.toFixed(7),i=wgs2itm(p.lat,p.lon);
 const waze=`https://waze.com/ul?ll=${la},${lo}&navigate=yes`,gm=`https://www.google.com/maps?q=${la},${lo}`;
 out.appendChild(card("Off Road (רשת ישראל, צפון,מזרח)",`${Math.round(i[1])},${Math.round(i[0])}`));
 out.appendChild(card("Waze (קישור ניווט)",waze,waze));
